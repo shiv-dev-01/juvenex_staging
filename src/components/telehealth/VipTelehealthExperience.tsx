@@ -224,21 +224,7 @@ export default function VipTelehealthExperience() {
               <p className="text-xs text-[var(--text-muted)]">Telehealth products</p>
             </div>
           </Link>
-          {session.step !== 'categories' ? (
-            <button
-              type="button"
-              className="text-sm font-semibold text-[var(--accent-strong)]"
-              onClick={() => {
-                if (session.step === 'products') goCategories()
-                else if (session.step === 'details' || session.step === 'intake')
-                  persist({ ...session, step: 'products', plan: null, productSlug: null })
-                else if (session.step === 'review')
-                  persist({ ...session, step: 'details' })
-              }}
-            >
-              Back
-            </button>
-          ) : (
+          {session.step === 'categories' ? (
             <button
               type="button"
               className="text-sm font-medium text-[#6B7567]"
@@ -249,6 +235,8 @@ export default function VipTelehealthExperience() {
             >
               Reset
             </button>
+          ) : (
+            <span aria-hidden="true" />
           )}
         </div>
       </header>
@@ -259,6 +247,22 @@ export default function VipTelehealthExperience() {
         }`}
       >
         <StepPill step={session.step} />
+
+        {session.step !== 'categories' ? (
+          <button
+            type="button"
+            className="mb-4 text-sm font-semibold text-[var(--accent-strong)]"
+            onClick={() => {
+              if (session.step === 'products') goCategories()
+              else if (session.step === 'details' || session.step === 'intake')
+                persist({ ...session, step: 'products', plan: null, productSlug: null })
+              else if (session.step === 'review')
+                persist({ ...session, step: 'details' })
+            }}
+          >
+            ← Back
+          </button>
+        ) : null}
 
         {session.step === 'categories' && (
           <section>

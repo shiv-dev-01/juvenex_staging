@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { FamilyProductCard } from '@/components/jx/store/FamilyProductCard'
 import type {
   StorefrontCategory,
@@ -12,8 +13,7 @@ import s from '@/components/jx/store/store.module.css'
 
 /**
  * Client-side store browser so category chips filter instantly without an RSC
- * round-trip. Product cards avoid aggressive prefetch in development (that
- * stampede compiles every /store/p/* route and stalls navigation 15–30s).
+ * round-trip. Honors ?q= from header search against product name/slug/tagline.
  */
 
 interface StoreBrowserProps {
@@ -22,46 +22,81 @@ interface StoreBrowserProps {
   initialCategory: StorefrontCategoryKey | null
 }
 
-export function StoreBrowser({ products, categories, initialCategory }: StoreBrowserProps) {
-  const [category, setCategory] = useState<StorefrontCategoryKey | null>(initialCategory)
+function productMatchesQuery(product: StorefrontProduct, q: string): boolean {
+  if (!q) return true
+  const medNames =
+    product.pricingType === 'medications'
+      ? (product.medications ?? []).map((m) => m.name).join(' ')
+      : ''
+  const haystack = [product.name, product.slug, product.tagline, product.category, medNames]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((term) => haystack.includes(term))
+}
 
-  // Hydrate from ?category= before paint + keep back/forward in sync.
-  useLayoutEffect(() => {
-    const value = new URLSearchParams(window.location.search).get('category')
-    if (value && categories.some((c) => c.key === value)) {
-      setCategory(value as StorefrontCategoryKey)
-    }
-  }, [categories])
+export function StoreBrowser(props: StoreBrowserProps) {
+  return (
+    <Suspense fallback={<StoreBrowserFallback />}>
+      <StoreBrowserInner {...props} />
+    </Suspense>
+  )
+}
 
+function StoreBrowserFallback() {
+  return (
+    <div className="jx-shell" style={{ paddingBlock: '26px 64px' }}>
+      <div className="jx-skeleton" style={{ height: 160, borderRadius: 'var(--jx-r-md)' }} />
+    </div>
+  )
+}
+
+function StoreBrowserInner({ products, categories, initialCategory }: StoreBrowserProps) {
+  const searchParams = useSearchParams()
+  const searchQ = (searchParams.get('q') ?? '').trim()
+  const rawCategory = searchParams.get('category')
+  const urlCategory =
+    rawCategory && categories.some((c) => c.key === rawCategory)
+      ? (rawCategory as StorefrontCategoryKey)
+      : null
+
+  const [category, setCategory] = useState<StorefrontCategoryKey | null>(
+    urlCategory ?? initialCategory
+  )
+
+  // Header search uses router.push — sync category when URL changes.
   useEffect(() => {
-    const sync = () => {
-      const value = new URLSearchParams(window.location.search).get('category')
-      if (value && categories.some((c) => c.key === value)) {
-        setCategory(value as StorefrontCategoryKey)
-      } else {
-        setCategory(null)
-      }
+    if (searchParams.has('category')) {
+      setCategory(urlCategory)
+    } else if (searchParams.has('q')) {
+      setCategory(null)
     }
-    window.addEventListener('popstate', sync)
-    return () => window.removeEventListener('popstate', sync)
-  }, [categories])
+  }, [searchParams, urlCategory])
 
   const selectCategory = useCallback(
     (key: StorefrontCategoryKey | null) => {
       setCategory(key)
-      const next = key ? `/store?category=${encodeURIComponent(key)}` : '/store'
-      window.history.replaceState(window.history.state, '', next)
+      const params = new URLSearchParams()
+      if (key) params.set('category', key)
+      if (searchQ) params.set('q', searchQ)
+      const qs = params.toString()
+      window.history.replaceState(window.history.state, '', qs ? `/store?${qs}` : '/store')
     },
-    []
+    [searchQ]
   )
 
-  const visible = useMemo(
-    () => (category ? products.filter((p) => p.category === category) : products),
-    [products, category]
-  )
+  const visible = useMemo(() => {
+    return products.filter((p) => {
+      if (category && p.category !== category) return false
+      return productMatchesQuery(p, searchQ)
+    })
+  }, [products, category, searchQ])
 
-  const activeLabel =
-    categories.find((c) => c.key === category)?.label ?? 'All treatments'
+  const activeLabel = categories.find((c) => c.key === category)?.label ?? 'All treatments'
 
   return (
     <div className="jx-shell" style={{ paddingBlock: '26px 64px' }}>
@@ -104,6 +139,11 @@ export function StoreBrowser({ products, categories, initialCategory }: StoreBro
           Browse by category, choose a supply option, and add to your bag. Checkout uses the
           existing Juvenex payment flow.
         </p>
+        {searchQ ? (
+          <p style={{ margin: '10px 0 0', fontSize: 13.5, color: 'var(--jx-muted)' }}>
+            Showing results for &ldquo;{searchQ}&rdquo;
+          </p>
+        ) : null}
       </header>
 
       <nav aria-label="Product categories" className={s.chips} style={{ marginBottom: 22 }}>
@@ -138,7 +178,11 @@ export function StoreBrowser({ products, categories, initialCategory }: StoreBro
             ))}
           </div>
         ) : (
-          <p style={{ color: 'var(--jx-muted)' }}>No treatments in this category yet.</p>
+          <p style={{ color: 'var(--jx-muted)' }}>
+            {searchQ
+              ? `No treatments match “${searchQ}”. Try another search or browse all.`
+              : 'No treatments in this category yet.'}
+          </p>
         )}
       </section>
     </div>

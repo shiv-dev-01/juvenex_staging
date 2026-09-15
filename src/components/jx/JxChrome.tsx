@@ -70,6 +70,17 @@ export function JxChrome() {
     }
   }, [menuOpen])
 
+  // Keep the header search box in sync when landing on /store?q=…
+  useEffect(() => {
+    if (!pathname?.startsWith('/store')) return
+    try {
+      const q = new URLSearchParams(window.location.search).get('q') ?? ''
+      setQuery(q)
+    } catch {
+      /* ignore */
+    }
+  }, [pathname])
+
   // Intake embed is fullscreen — hide site chrome so it cannot cover the form.
   if (pathname?.startsWith('/store/intake')) {
     return null

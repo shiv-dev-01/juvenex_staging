@@ -977,7 +977,7 @@ function CheckoutPaymentForm({
             <SpinnerIcon size={16} /> Placing your order&hellip;
           </>
         ) : (
-          `Pay ${formatUsd(intent.breakdown.total_cents / 100)} — place ${lines.length} order${lines.length === 1 ? '' : 's'}`
+          'Place order'
         )}
       </button>
     </form>

@@ -767,7 +767,7 @@ export function DummyCardCheckout({
             <SpinnerIcon size={16} /> Placing your order&hellip;
           </>
         ) : (
-          `Pay ${formatUsd(displayTotal)} — place ${lines.length} order${lines.length === 1 ? '' : 's'}`
+          'Place order'
         )}
       </button>
     </form>
