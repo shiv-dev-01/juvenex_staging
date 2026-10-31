@@ -18,6 +18,7 @@ const TAB_LABEL: Record<AdminTabId, string> = {
   blogs: 'Blogs',
   orders: 'Orders',
   fulfillment: 'Fulfillment',
+  pricing: 'Pricing',
   reports: 'Reports',
   affiliates: 'Affiliates',
   coupons: 'Coupons',
@@ -53,6 +54,8 @@ export default function AdminTopBar({
       onTabChange('orders')
     } else if (q.includes('fulfill') || q.includes('ship')) {
       onTabChange('fulfillment')
+    } else if (q.includes('price') || q.includes('pricing') || q.includes('sku')) {
+      onTabChange('pricing')
     } else if (q.includes('report') || q.includes('moderation')) {
       onTabChange('reports')
     } else if (q.includes('message') || q.includes('chat')) {

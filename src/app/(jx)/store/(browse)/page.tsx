@@ -1,13 +1,15 @@
 import type { Metadata } from 'next'
 import { StoreBrowser } from '@/components/jx/store/StoreBrowser'
-import { STOREFRONT_CATEGORIES, STOREFRONT_PRODUCTS } from '@/lib/jx/storefront-catalog'
+import { getLiveStorefront } from '@/lib/jx/panel-storefront.server'
 
 /**
- * /store — static shell; category filtering is client-side in StoreBrowser so
- * chip clicks never wait on an RSC refetch. Catalog is local (no partner API).
+ * /store — categories and treatments come from the WhiteLabelMD panel.
+ * Chip filtering stays client-side so a click does not refetch the page.
+ * Cached for five minutes in getLiveStorefront. If the panel is down, that
+ * loader returns the generated catalog so this page still renders.
  */
 
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Shop treatments',
@@ -15,11 +17,12 @@ export const metadata: Metadata = {
     'Browse Juvenex treatments by category. Every option maps to a Juvenex checkout SKU.',
 }
 
-export default function StorePage() {
+export default async function StorePage() {
+  const catalog = await getLiveStorefront()
   return (
     <StoreBrowser
-      products={STOREFRONT_PRODUCTS}
-      categories={STOREFRONT_CATEGORIES}
+      products={catalog.products}
+      categories={catalog.categories}
       initialCategory={null}
     />
   )

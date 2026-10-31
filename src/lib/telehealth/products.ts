@@ -10,6 +10,7 @@ import {
   type StorefrontPlan,
   type StorefrontProduct,
 } from '@/lib/jx/storefront-catalog'
+import { omitHiddenPlans, withPanelPrices, type PanelPriceIndex } from '@/lib/jx/panel-storefront'
 import { peptideForProduct } from '@/lib/marketplace-access'
 
 /** Patient-facing category labels (simple, not clinical jargon). */
@@ -116,19 +117,26 @@ function toVipProduct(product: StorefrontProduct): VipProduct | null {
 }
 
 /** All VIP telehealth products from the native storefront catalog. */
-export function listVipProducts(): VipProduct[] {
-  return STOREFRONT_PRODUCTS.map(toVipProduct).filter(
-    (p): p is VipProduct => p !== null
-  )
+export function listVipProducts(
+  prices?: PanelPriceIndex,
+  hidden?: ReadonlySet<string>
+): VipProduct[] {
+  return STOREFRONT_PRODUCTS.flatMap((product) => {
+    const priced = prices ? withPanelPrices(product, prices) : product
+    const visible = hidden ? omitHiddenPlans(priced, hidden) : priced
+    if (!visible) return []
+    const vip = toVipProduct(visible)
+    return vip ? [vip] : []
+  })
 }
 
-export function listVipCategories(): Array<{
+export function listVipCategories(hidden?: ReadonlySet<string>): Array<{
   key: StorefrontCategoryKey
   title: string
   blurb: string
   productCount: number
 }> {
-  const products = listVipProducts()
+  const products = listVipProducts(undefined, hidden)
   return STOREFRONT_CATEGORIES.map((cat) => {
     const copy = VIP_CATEGORY_COPY[cat.key]
     return {
@@ -140,14 +148,20 @@ export function listVipCategories(): Array<{
   }).filter((c) => c.productCount > 0)
 }
 
-export function getVipProduct(slug: string): VipProduct | null {
-  return listVipProducts().find((p) => p.slug === slug) ?? null
+export function getVipProduct(
+  slug: string,
+  prices?: PanelPriceIndex,
+  hidden?: ReadonlySet<string>
+): VipProduct | null {
+  return listVipProducts(prices, hidden).find((p) => p.slug === slug) ?? null
 }
 
 export function listVipProductsByCategory(
-  category: StorefrontCategoryKey
+  category: StorefrontCategoryKey,
+  prices?: PanelPriceIndex,
+  hidden?: ReadonlySet<string>
 ): VipProduct[] {
-  return listVipProducts().filter((p) => p.category === category)
+  return listVipProducts(prices, hidden).filter((p) => p.category === category)
 }
 
 /**

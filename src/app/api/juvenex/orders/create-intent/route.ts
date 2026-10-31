@@ -12,12 +12,16 @@
  *
  * THE CLIENT NEVER NAMES A PRICE
  * The body carries product ids and coupon codes, never amounts. Every price
- * comes from `Get_Product_Details` and every discount from `Check_Coupons`,
+ * comes from the site 614 panel price (the admin dashboard), then
+ * `Get_Product_Details` when that product is not on the panel. Discounts come
+ * from `Check_Coupons`,
  * both server-side, so tampering with the request can change what is being
  * bought but never what it costs.
  */
 import type { NextRequest } from 'next/server'
 import { juvenexClient } from '@/lib/juvenex/client'
+import { panelPriceFor } from '@/lib/jx/panel-storefront'
+import { getPanelPriceIndex } from '@/lib/jx/panel-storefront.server'
 import { createIntentSchema } from '@/lib/juvenex/schemas'
 import { parseBody, requireUser, upstreamError } from '@/lib/juvenex/route-utils'
 import {
@@ -46,11 +50,18 @@ export async function POST(request: NextRequest) {
   const { lines, coupons = [] } = parsed.data
 
   try {
-    // Authoritative prices, one lookup per line.
+    // Authoritative prices, one lookup per line. Site 614 wins so an admin
+    // update is what the customer is charged.
+    const panelPrices = await getPanelPriceIndex()
     const priced: Array<{ productId: number; cents: number }> = []
     for (const line of lines) {
       const details = await juvenexClient.getProductDetails(String(line.product_id))
-      const rawPrice = details?.product_data?.product_price
+      const panelPrice = panelPriceFor(
+        panelPrices,
+        String(line.product_id),
+        details?.product_data?.product_sku
+      )
+      const rawPrice = panelPrice ?? details?.product_data?.product_price
       const price = Number(rawPrice)
       if (!rawPrice || !Number.isFinite(price) || price <= 0) {
         return Response.json(

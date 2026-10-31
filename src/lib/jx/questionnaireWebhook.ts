@@ -4,7 +4,8 @@
  * Posts the exact payload shape expected by:
  *   https://n8n.whitelabelmd.com/webhook/f7e33dc8-c81c-4879-b36b-eafe07e02c65
  *
- * Juvenex site_id = 453 (same as JUVENEX_CHECKOUT_SITE_ID).
+ * GHL / n8n site_id = 453 (JUVENEX_CHECKOUT_SITE_ID).
+ * Product pricing uses site 614 and does not read this constant.
  *
  * Behavior:
  * - Persist answers + tracking in sessionStorage.

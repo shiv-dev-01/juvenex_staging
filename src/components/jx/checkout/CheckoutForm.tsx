@@ -417,7 +417,7 @@ export function CheckoutForm() {
         <LockIcon size={18} />
         <span>
           {useDummyCard
-            ? 'Enter your card details below to place each item as its own order for prescription review. Use a test/dummy card while Stripe is disabled on this environment.'
+            ? 'Enter your card details below to place each item as its own order for prescription review.'
             : 'Your card is entered securely with Stripe and charged once for the whole bag. Each item is still placed as its own order for prescription review — if any of them can\u2019t be placed, the payment is released and you are not charged at all.'}
         </span>
       </div>

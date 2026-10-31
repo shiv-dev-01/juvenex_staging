@@ -4,11 +4,8 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { FamilyProductCard } from '@/components/jx/store/FamilyProductCard'
-import type {
-  StorefrontCategory,
-  StorefrontCategoryKey,
-  StorefrontProduct,
-} from '@/lib/jx/storefront-catalog'
+import { withBasePath } from '@/lib/base-path'
+import type { ShopCategory, ShopProduct } from '@/lib/jx/panel-storefront'
 import s from '@/components/jx/store/store.module.css'
 
 /**
@@ -17,12 +14,12 @@ import s from '@/components/jx/store/store.module.css'
  */
 
 interface StoreBrowserProps {
-  products: StorefrontProduct[]
-  categories: StorefrontCategory[]
-  initialCategory: StorefrontCategoryKey | null
+  products: ShopProduct[]
+  categories: ShopCategory[]
+  initialCategory: string | null
 }
 
-function productMatchesQuery(product: StorefrontProduct, q: string): boolean {
+function productMatchesQuery(product: ShopProduct, q: string): boolean {
   if (!q) return true
   const medNames =
     product.pricingType === 'medications'
@@ -59,14 +56,9 @@ function StoreBrowserInner({ products, categories, initialCategory }: StoreBrows
   const searchParams = useSearchParams()
   const searchQ = (searchParams.get('q') ?? '').trim()
   const rawCategory = searchParams.get('category')
-  const urlCategory =
-    rawCategory && categories.some((c) => c.key === rawCategory)
-      ? (rawCategory as StorefrontCategoryKey)
-      : null
+  const urlCategory = resolveCategoryKey(rawCategory, categories)
 
-  const [category, setCategory] = useState<StorefrontCategoryKey | null>(
-    urlCategory ?? initialCategory
-  )
+  const [category, setCategory] = useState<string | null>(urlCategory ?? initialCategory)
 
   // Header search uses router.push — sync category when URL changes.
   useEffect(() => {
@@ -78,13 +70,17 @@ function StoreBrowserInner({ products, categories, initialCategory }: StoreBrows
   }, [searchParams, urlCategory])
 
   const selectCategory = useCallback(
-    (key: StorefrontCategoryKey | null) => {
+    (key: string | null) => {
       setCategory(key)
       const params = new URLSearchParams()
       if (key) params.set('category', key)
       if (searchQ) params.set('q', searchQ)
       const qs = params.toString()
-      window.history.replaceState(window.history.state, '', qs ? `/store?${qs}` : '/store')
+      window.history.replaceState(
+        window.history.state,
+        '',
+        withBasePath(qs ? `/store?${qs}` : '/store')
+      )
     },
     [searchQ]
   )
@@ -187,6 +183,24 @@ function StoreBrowserInner({ products, categories, initialCategory }: StoreBrows
       </section>
     </div>
   )
+}
+
+function resolveCategoryKey(raw: string | null, categories: ShopCategory[]): string | null {
+  if (!raw) return null
+  const decoded = raw.trim()
+  const exact = categories.find(
+    (category) =>
+      category.key === decoded || category.label === decoded || category.navLabel === decoded
+  )
+  if (exact) return exact.key
+  const lower = decoded.toLowerCase()
+  const loose = categories.find(
+    (category) =>
+      category.key === lower ||
+      category.label.toLowerCase() === lower ||
+      category.navLabel.toLowerCase() === lower
+  )
+  return loose?.key ?? null
 }
 
 function CategoryChip({

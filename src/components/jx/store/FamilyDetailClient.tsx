@@ -1,17 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { formatUsd } from '@/lib/jx/catalog'
 import { getStorefrontProductContent } from '@/lib/jx/storefront-product-content'
 import { useJxStore } from '@/components/jx/JxStore'
 import { JxVial } from '@/components/jx/JxVial'
 import { CheckIcon } from '@/components/jx/icons'
-import type {
-  StorefrontMedication,
-  StorefrontPlan,
-  StorefrontProduct,
-} from '@/lib/jx/storefront-catalog'
+import type { ShopProduct } from '@/lib/jx/panel-storefront'
+import type { StorefrontMedication, StorefrontPlan } from '@/lib/jx/storefront-catalog'
 import { FamilyProductContent } from './FamilyProductContent'
 import { useAuthGatedAdd } from './useAuthGatedAdd'
 import {
@@ -19,7 +16,7 @@ import {
   fireQuestionnaireWebhook,
 } from '@/lib/jx/questionnaireWebhook'
 
-export function FamilyDetailClient({ product }: { product: StorefrontProduct }) {
+export function FamilyDetailClient({ product }: { product: ShopProduct }) {
   const { has, hydrated } = useJxStore()
   const { addOrSignIn, authLoading } = useAuthGatedAdd()
   const content = useMemo(() => getStorefrontProductContent(product.slug), [product.slug])
@@ -99,88 +96,43 @@ export function FamilyDetailClient({ product }: { product: StorefrontProduct }) 
         </div>
       </div>
 
-      {product.pricingType === 'medications' && product.medications?.length ? (
+      {product.pricingType === 'medications' && (product.medications?.length ?? 0) > 1 ? (
         <section aria-labelledby="jx-med-h">
           <h2 id="jx-med-h" className="jx-eyebrow" style={{ marginBottom: 12 }}>
-            Formulation
+            Variation
           </h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {product.medications.map((med, index) => {
-              const selected = index === medIndex
-              return (
-                <button
-                  key={`${med.name}-${index}`}
-                  type="button"
-                  onClick={() => onSelectMed(index)}
-                  aria-pressed={selected}
-                  className="jx-card"
-                  style={{
-                    textAlign: 'left',
-                    padding: '14px 16px',
-                    border: selected
-                      ? '2px solid var(--jx-brand)'
-                      : '1px solid var(--jx-line, #E5EAE3)',
-                    background: selected ? 'var(--jx-bg-soft, #F5F8F3)' : undefined,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <strong style={{ display: 'block', color: 'var(--jx-ink)' }}>{med.name}</strong>
-                </button>
-              )
-            })}
-          </div>
+          <VariationSelect
+            label="Variation"
+            value={String(medIndex)}
+            onChange={(value) => onSelectMed(Number(value))}
+          >
+            {product.medications?.map((med, index) => (
+              <option key={`${med.name}-${index}`} value={index}>
+                {med.name}
+              </option>
+            ))}
+          </VariationSelect>
         </section>
       ) : null}
 
-      <section aria-labelledby="jx-plan-h">
-        <h2 id="jx-plan-h" className="jx-eyebrow" style={{ marginBottom: 12 }}>
-          Supply
-        </h2>
-        <div
-          style={{
-            display: 'grid',
-            gap: 10,
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          }}
-        >
-          {plans.map((plan, index) => {
-            const selected = index === planIndex
-            return (
-              <button
-                key={plan.productId}
-                type="button"
-                onClick={() => setPlanIndex(index)}
-                aria-pressed={selected}
-                className="jx-card"
-                style={{
-                  textAlign: 'left',
-                  padding: '14px 16px',
-                  border: selected
-                    ? '2px solid var(--jx-brand)'
-                    : '1px solid var(--jx-line, #E5EAE3)',
-                  background: selected ? 'var(--jx-bg-soft, #F5F8F3)' : undefined,
-                  cursor: 'pointer',
-                }}
-              >
-                <strong style={{ display: 'block', color: 'var(--jx-ink)' }}>{plan.label}</strong>
-                {plan.dosage ? (
-                  <span style={{ fontSize: 12.5, color: 'var(--jx-muted)' }}>{plan.dosage}</span>
-                ) : null}
-                <span
-                  style={{
-                    display: 'block',
-                    marginTop: 8,
-                    fontWeight: 600,
-                    color: 'var(--jx-ink)',
-                  }}
-                >
-                  {formatUsd(plan.price)}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      {plans.length > 1 ? (
+        <section aria-labelledby="jx-plan-h">
+          <h2 id="jx-plan-h" className="jx-eyebrow" style={{ marginBottom: 12 }}>
+            Select plan
+          </h2>
+          <VariationSelect
+            label="Plan"
+            value={String(Math.min(planIndex, plans.length - 1))}
+            onChange={(value) => setPlanIndex(Number(value))}
+          >
+            {plans.map((plan, index) => (
+              <option key={plan.productId} value={index}>
+                {[plan.label, plan.dosage, formatUsd(plan.price)].filter(Boolean).join(' · ')}
+              </option>
+            ))}
+          </VariationSelect>
+        </section>
+      ) : null}
 
       <div className="jx-card" style={{ padding: 18 }}>
         <dl
@@ -248,5 +200,56 @@ export function FamilyDetailClient({ product }: { product: StorefrontProduct }) 
 
       {content ? <FamilyProductContent content={content} /> : null}
     </div>
+  )
+}
+
+function VariationSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  children: ReactNode
+}) {
+  return (
+    <label style={{ display: 'block' }}>
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+        style={{
+          width: '100%',
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          borderRadius: 999,
+          border: '2px solid var(--jx-line, #E5EAE3)',
+          backgroundColor: '#fff',
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%232D352C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 18px center',
+          color: 'var(--jx-ink)',
+          fontWeight: 600,
+          fontSize: 15,
+          padding: '14px 46px 14px 18px',
+          cursor: 'pointer',
+          transition: 'border-color .2s ease, box-shadow .2s ease',
+        }}
+        onFocus={(event) => {
+          event.currentTarget.style.borderColor = 'var(--jx-brand, #6B8F71)'
+          event.currentTarget.style.boxShadow = '0 0 0 4px rgba(107, 143, 113, 0.15)'
+        }}
+        onBlur={(event) => {
+          event.currentTarget.style.borderColor = 'var(--jx-line, #E5EAE3)'
+          event.currentTarget.style.boxShadow = 'none'
+        }}
+      >
+        {children}
+      </select>
+    </label>
   )
 }

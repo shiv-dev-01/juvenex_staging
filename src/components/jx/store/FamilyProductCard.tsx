@@ -3,10 +3,10 @@
 import Link from 'next/link'
 import { formatUsd } from '@/lib/jx/catalog'
 import { JxVial } from '@/components/jx/JxVial'
-import type { StorefrontProduct } from '@/lib/jx/storefront-catalog'
+import type { ShopProduct } from '@/lib/jx/panel-storefront'
 
-/** Catalogue card for a product family (Semaglutide, Sermorelin, …). */
-export function FamilyProductCard({ product }: { product: StorefrontProduct }) {
+/** Catalogue card for one shop treatment. */
+export function FamilyProductCard({ product }: { product: ShopProduct }) {
   return (
     <article
       className="jx-card"

@@ -18,6 +18,7 @@ import { JxVial } from '@/components/jx/JxVial'
 import { useAuth } from '@/lib/auth-context'
 import { getStorefrontProductContent } from '@/lib/jx/storefront-product-content'
 import type { StorefrontCategoryKey } from '@/lib/jx/storefront-catalog'
+import type { PanelPriceIndex } from '@/lib/jx/panel-storefront'
 import {
   formatVipPrice,
   getVipProduct,
@@ -34,6 +35,16 @@ import {
   type VipFlowStep,
   type VipTelehealthSession,
 } from '@/lib/telehealth/session'
+
+export default function VipTelehealthExperience({
+  prices,
+  hiddenIds,
+}: {
+  prices?: PanelPriceIndex
+  hiddenIds?: string[]
+}) {
+  return <VipTelehealthFlow prices={prices} hiddenIds={hiddenIds} />
+}
 
 function Spinner() {
   return (
@@ -87,7 +98,14 @@ function accentForCategory(category: string): string {
   }
 }
 
-export default function VipTelehealthExperience() {
+function VipTelehealthFlow({
+  prices,
+  hiddenIds,
+}: {
+  prices?: PanelPriceIndex
+  hiddenIds?: string[]
+}) {
+  const hidden = useMemo(() => new Set(hiddenIds ?? []), [hiddenIds])
   const router = useRouter()
   const brand = useBrand()
   const { isAuthenticated, isLoading: authLoading, user } = useAuth()
@@ -126,15 +144,20 @@ export default function VipTelehealthExperience() {
   }
 
   // Category-scoped catalog (same storefront source as Shop). No PrescribeRx.
-  const categories = useMemo(() => listVipCategories(), [])
+  const categories = useMemo(() => listVipCategories(hidden), [hidden])
   const productsInCategory = useMemo(() => {
     if (!session?.category) return []
-    return listVipProductsByCategory(session.category)
-  }, [session?.category])
+    return listVipProductsByCategory(session.category, prices, hidden)
+  }, [session?.category, prices, hidden])
 
   const selectedProduct = session?.productSlug
-    ? getVipProduct(session.productSlug)
+    ? getVipProduct(session.productSlug, prices, hidden)
     : null
+  const freshPlan =
+    selectedProduct && session?.plan
+      ? (selectedProduct.plans.find((plan) => plan.productId === session.plan?.productId) ??
+        session.plan)
+      : null
   const productContent = selectedProduct
     ? getStorefrontProductContent(selectedProduct.slug)
     : null
@@ -164,7 +187,7 @@ export default function VipTelehealthExperience() {
     })
 
   const pickProduct = (slug: string) => {
-    const product = getVipProduct(slug)
+    const product = getVipProduct(slug, prices, hidden)
     persist({
       ...session,
       step: 'details',
@@ -200,7 +223,7 @@ export default function VipTelehealthExperience() {
         id: session.plan.productId,
         title: selectedProduct.name,
         subtitle: `${session.plan.label}${session.plan.dosage ? ` · ${session.plan.dosage}` : ''}`,
-        price: session.plan.price,
+        price: freshPlan?.price ?? session.plan.price,
         rawName: selectedProduct.name,
       })
 
@@ -414,7 +437,7 @@ export default function VipTelehealthExperience() {
               <p className="font-bold text-[#2D352C]">Eligibility / next step</p>
               <p className="mt-1">
                 Selected: <strong>{selectedProduct.name}</strong> (
-                {formatVipPrice(session.plan.price)}). Review your selection,
+                {formatVipPrice(freshPlan?.price ?? session.plan.price)}). Review your selection,
                 then checkout. Clinical intake (if required) happens after
                 payment. A licensed provider reviews eligibility before any
                 prescription is fulfilled.
@@ -450,7 +473,7 @@ export default function VipTelehealthExperience() {
                     {session.plan.dosage ? ` · ${session.plan.dosage}` : ''}
                   </p>
                   <p className="mt-2 text-lg font-bold text-[var(--accent-strong)]">
-                    {formatVipPrice(session.plan.price)}
+                    {formatVipPrice(freshPlan?.price ?? session.plan.price)}
                   </p>
                   <button
                     type="button"

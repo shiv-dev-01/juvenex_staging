@@ -12,6 +12,7 @@ import BlogsTab from '@/components/admin/BlogsTab'
 import ReportsTab from '@/components/admin/ReportsTab'
 import AffiliatesTab from '@/components/admin/AffiliatesTab'
 import CouponsTab from '@/components/admin/CouponsTab'
+import PricingTab from '@/components/admin/PricingTab'
 import SettingsTab from '@/components/admin/SettingsTab'
 import UserPicker from '@/components/admin/UserPicker'
 import MessageThread from '@/components/admin/MessageThread'
@@ -35,6 +36,7 @@ export default function AdminPage() {
       {tab === 'blogs' && <BlogsTab />}
       {tab === 'orders' && <OrdersTab />}
       {tab === 'fulfillment' && <OrderFulfillmentTab />}
+      {tab === 'pricing' && <PricingTab />}
       {tab === 'reports' && <ReportsTab />}
       {/* NOTE: the 'affiliates' nav item + AdminTabId union member live in
           AdminSidebar.tsx (owned elsewhere). The cast keeps this file

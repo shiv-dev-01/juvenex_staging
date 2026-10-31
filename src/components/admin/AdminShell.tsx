@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { canManagePricing } from '@/lib/juvenex/pricing-access'
 import AdminSidebar, { type AdminTabId } from './AdminSidebar'
 import AdminTopBar from './AdminTopBar'
 
@@ -85,9 +86,16 @@ export default function AdminShell({
     }
   }, [isLoading, isAuthenticated, router])
 
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user && user.role !== 'super_admin' && canManagePricing(user)) {
+      router.replace('/admin/pricing')
+    }
+  }, [isLoading, isAuthenticated, user, router])
+
   if (isLoading) return <ShellLoading />
   if (!isAuthenticated || !user) return null
   if (user.role !== 'super_admin') {
+    if (canManagePricing(user)) return <ShellLoading />
     return <AccessDenied onGoHome={() => router.push('/dashboard')} />
   }
 

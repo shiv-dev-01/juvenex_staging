@@ -721,9 +721,6 @@ export function DummyCardCheckout({
         <h2 id="jx-payment-h" className="jx-eyebrow" style={{ marginBottom: 14 }}>
           Payment
         </h2>
-        <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--jx-muted)' }}>
-          Test / dummy card mode (IdunRX-style). Use a Stripe test PAN such as 4242 4242 4242 4242.
-        </p>
         <div style={{ display: 'grid', gap: 14 }}>
           <FormField
             label="Name on card"

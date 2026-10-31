@@ -3,6 +3,8 @@ import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { juvenexClient, JuvenexApiError, type JuvenexProduct } from '@/lib/juvenex/client'
 import { normalizeProduct, normalizeProducts, dedupeVariants, type JxProduct } from './catalog'
+import { panelPriceFor } from './panel-storefront'
+import { getPanelPriceIndex } from './panel-storefront.server'
 
 /**
  * Server-side catalogue access for the storefront pages.
@@ -45,9 +47,23 @@ const loadRawProducts = unstable_cache(
   { revalidate: CATALOG_TTL_SECONDS, tags: [CATALOG_TAG] }
 )
 
+async function withSitePrices(products: JxProduct[]): Promise<JxProduct[]> {
+  const prices = await getPanelPriceIndex()
+  if (!Object.keys(prices.byId).length) return products
+  return products.map((product) => {
+    const next = panelPriceFor(prices, product.id, product.sku)
+    if (next == null || next === product.price) return product
+    return {
+      ...product,
+      price: next,
+      pricePerMonth: product.supplyMonths > 0 ? next / product.supplyMonths : next,
+    }
+  })
+}
+
 export async function getCatalog(): Promise<CatalogResult> {
   const { rows, error } = await loadRawProducts()
-  const products = normalizeProducts(rows)
+  const products = await withSitePrices(normalizeProducts(rows))
   return { products, unique: dedupeVariants(products), error }
 }
 
