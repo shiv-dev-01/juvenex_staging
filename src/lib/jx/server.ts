@@ -3,8 +3,8 @@ import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { juvenexClient, JuvenexApiError, type JuvenexProduct } from '@/lib/juvenex/client'
 import { normalizeProduct, normalizeProducts, dedupeVariants, type JxProduct } from './catalog'
-import { panelPriceFor } from './panel-storefront'
-import { getPanelPriceIndex } from './panel-storefront.server'
+import { panelPriceFor, productIsActive } from './panel-storefront'
+import { getPanelPriceIndex, getVisibleProductIds } from './panel-storefront.server'
 
 /**
  * Server-side catalogue access for the storefront pages.
@@ -43,7 +43,7 @@ const loadRawProducts = unstable_cache(
       return { rows: [], error: message }
     }
   },
-  ['jx-catalog-v1'],
+  ['jx-catalog-v2'],
   { revalidate: CATALOG_TTL_SECONDS, tags: [CATALOG_TAG] }
 )
 
@@ -62,8 +62,13 @@ async function withSitePrices(products: JxProduct[]): Promise<JxProduct[]> {
 }
 
 export async function getCatalog(): Promise<CatalogResult> {
-  const { rows, error } = await loadRawProducts()
-  const products = await withSitePrices(normalizeProducts(rows))
+  const [{ rows, error }, visibleIds] = await Promise.all([loadRawProducts(), getVisibleProductIds()])
+  const visible = rows.filter((row) => {
+    const id = String(row.product_id)
+    if (visibleIds) return visibleIds.has(id)
+    return productIsActive(row)
+  })
+  const products = await withSitePrices(normalizeProducts(visible))
   return { products, unique: dedupeVariants(products), error }
 }
 
@@ -82,6 +87,18 @@ export interface ProductDetailResult {
  * the two are merged with the list row as the base.
  */
 export async function getProductDetail(productId: string): Promise<ProductDetailResult> {
+  const visibleIds = await getVisibleProductIds()
+  if (visibleIds && !visibleIds.has(productId)) {
+    return { product: null, related: [], error: null }
+  }
+  const { rows, error: listError } = await loadRawProducts()
+  if (!listError && rows.length > 0) {
+    const raw = rows.find((row) => String(row.product_id) === productId)
+    if (!raw || !productIsActive(raw)) {
+      return { product: null, related: [], error: null }
+    }
+  }
+
   const { products } = await getCatalog()
   const listRow = products.find((p) => p.id === productId) ?? null
 

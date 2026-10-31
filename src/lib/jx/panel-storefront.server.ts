@@ -4,8 +4,9 @@ import { unstable_cache } from 'next/cache'
 import { juvenexClient } from '@/lib/juvenex/client'
 import { STOREFRONT_CATEGORIES, STOREFRONT_PRODUCTS } from './storefront-catalog'
 import { fetchPanelCatalog, fetchPanelPrices } from '@/lib/juvenex/panel-pricing'
-import { hiddenProductIds } from '@/lib/juvenex/product-visibility'
 import {
+  activeProductIds,
+  inactiveProductIds,
   mapPanelCatalog,
   omitHiddenPlans,
   parseCategoryNames,
@@ -40,6 +41,14 @@ export type LiveStorefront = {
   categories: ShopCategory[]
   products: ShopProduct[]
   source: 'category-api' | 'product-list' | 'static'
+  /** Product ids Get_Products marks inactive. Shoppers do not see these. */
+  inactiveIds: string[]
+  /**
+   * Ids Get_Products currently returns as active.
+   * Null when that list could not be loaded. A loaded list is the allow-list:
+   * an id that is missing has been turned off.
+   */
+  activeIds: string[] | null
 }
 
 async function panelGet(url: string): Promise<{ status: number; text: string; payload: unknown }> {
@@ -69,13 +78,13 @@ async function fetchCategoryProducts(categoryName: string) {
   return parseProductPayload(status, text, payload)
 }
 
-async function productsFromList(preferredNames: string[]): Promise<LiveStorefront | null> {
-  const response = await juvenexClient.getProducts()
-  if (response.status !== 1 || !Array.isArray(response.product)) return null
-
+function productsFromRows(preferredNames: string[], rows: unknown[]): LiveStorefront | null {
   const productsByCategory: Record<string, unknown[]> = {}
-  for (const row of response.product) {
-    const name = String(row.product_category_name ?? '').trim() || 'Other'
+  for (const row of rows) {
+    const name =
+      row && typeof row === 'object'
+        ? String((row as { product_category_name?: unknown }).product_category_name ?? '').trim() || 'Other'
+        : 'Other'
     if (!productsByCategory[name]) productsByCategory[name] = []
     productsByCategory[name].push(row)
   }
@@ -83,10 +92,30 @@ async function productsFromList(preferredNames: string[]): Promise<LiveStorefron
   const categoryNames = preferredNames.length ? preferredNames : Object.keys(productsByCategory)
   const mapped = mapPanelCatalog({ categoryNames, productsByCategory })
   if (!mapped.products.length) return null
-  return { ...mapped, source: 'product-list' }
+  return {
+    ...mapped,
+    source: 'product-list',
+    inactiveIds: inactiveProductIds(rows),
+    activeIds: activeProductIds(rows),
+  }
 }
 
 async function loadLiveStorefront(): Promise<LiveStorefront> {
+  let listRows: unknown[] = []
+  let listLoaded = false
+  try {
+    const response = await juvenexClient.getProducts()
+    if (response.status === 1 && Array.isArray(response.product)) {
+      listRows = response.product
+      listLoaded = true
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'unknown error'
+    console.error('[jx] Get_Products failed:', message)
+  }
+  const inactiveIds = inactiveProductIds(listRows)
+  const activeIds = listLoaded ? activeProductIds(listRows) : null
+
   try {
     const categoryNames = (await fetchCategoryNames()) ?? []
     if (categoryNames.length) {
@@ -103,7 +132,7 @@ async function loadLiveStorefront(): Promise<LiveStorefront> {
         )
         for (const [name, rows] of rest) productsByCategory[name] = rows
         const mapped = mapPanelCatalog({ categoryNames, productsByCategory })
-        if (mapped.products.length) return { ...mapped, source: 'category-api' }
+        if (mapped.products.length) return { ...mapped, source: 'category-api', inactiveIds, activeIds }
       } else if (probe.kind === 'missing-method') {
         console.warn(
           '[jx] get-product-by-category is not implemented on the panel; grouping Get_Products by category'
@@ -111,7 +140,7 @@ async function loadLiveStorefront(): Promise<LiveStorefront> {
       }
     }
 
-    const fromList = await productsFromList(categoryNames)
+    const fromList = productsFromRows(categoryNames, listRows)
     if (fromList) return fromList
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'unknown error'
@@ -126,11 +155,14 @@ async function loadLiveStorefront(): Promise<LiveStorefront> {
     })),
     products: STOREFRONT_PRODUCTS,
     source: 'static',
+    inactiveIds,
+    activeIds,
   }
 }
 
-const getCachedLiveStorefront = unstable_cache(loadLiveStorefront, ['jx-live-storefront-v1'], {
+const getCachedLiveStorefront = unstable_cache(loadLiveStorefront, ['jx-live-storefront-v3'], {
   revalidate: 300,
+  tags: ['jx-product-catalog'],
 })
 
 const EMPTY_PRICE_INDEX: PanelPriceIndex = { byId: {} }
@@ -169,6 +201,30 @@ export const getPanelPriceIndex = unstable_cache(loadPanelPriceIndex, ['jx-panel
   tags: ['jx-panel-prices'],
 })
 
+function hiddenIds(catalog: LiveStorefront): Set<string> {
+  const hidden = new Set(catalog.inactiveIds ?? [])
+  if (!catalog.activeIds) return hidden
+  const active = new Set(catalog.activeIds)
+  const consider = (productId: string | undefined) => {
+    if (productId && !active.has(productId)) hidden.add(productId)
+  }
+  for (const product of catalog.products) {
+    for (const plan of product.plans ?? []) consider(plan.productId)
+    for (const med of product.medications ?? []) {
+      consider(med.productId)
+      for (const plan of med.plans ?? []) consider(plan.productId)
+    }
+  }
+  return hidden
+}
+
+/** Active product ids from Get_Products. Null when that list could not be loaded. */
+export async function getVisibleProductIds(): Promise<Set<string> | null> {
+  const catalog = await getCachedLiveStorefront()
+  if (!catalog.activeIds) return null
+  return new Set(catalog.activeIds)
+}
+
 /** Priced catalog, including products an admin has turned off. */
 export async function getPricedStorefront(): Promise<LiveStorefront> {
   const catalog = await getCachedLiveStorefront()
@@ -181,7 +237,7 @@ export async function getPricedStorefront(): Promise<LiveStorefront> {
 
 export async function getLiveStorefront(): Promise<LiveStorefront> {
   const catalog = await getPricedStorefront()
-  const hidden = hiddenProductIds()
+  const hidden = hiddenIds(catalog)
   if (hidden.size === 0) return catalog
   return {
     ...catalog,
@@ -197,5 +253,5 @@ export async function findLiveProduct(slug: string): Promise<ShopProduct | null 
   const catalog = await getPricedStorefront()
   const product = catalog.products.find((item) => item.slug === slug)
   if (!product) return undefined
-  return omitHiddenPlans(product, hiddenProductIds())
+  return omitHiddenPlans(product, hiddenIds(catalog))
 }

@@ -131,6 +131,43 @@ function text(value: unknown): string {
   return ''
 }
 
+/** `product_status` 1 is on the site. 0, or an inactive label, is hidden. A missing field stays visible. */
+export function productIsActive(record: Record<string, unknown>): boolean {
+  const label = text(record.product_status_text)
+  if (/deactivat|inactive/i.test(label)) return false
+  if (record.product_status == null || record.product_status === '') return true
+  const status = Number(record.product_status)
+  return Number.isFinite(status) ? status === 1 : true
+}
+
+export function activeProductIds(rows: unknown[]): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const record = row as Record<string, unknown>
+    const id = text(record.product_id ?? record.id ?? record.uniq_id)
+    if (!id || seen.has(id) || !productIsActive(record)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  return ids
+}
+
+export function inactiveProductIds(rows: unknown[]): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const record = row as Record<string, unknown>
+    const id = text(record.product_id ?? record.id ?? record.uniq_id)
+    if (!id || seen.has(id) || productIsActive(record)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  return ids
+}
+
 function money(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value !== 'string') return null

@@ -3,8 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { FamilyDetailClient } from '@/components/jx/store/FamilyDetailClient'
 import { omitHiddenPlans, withPanelPrices } from '@/lib/jx/panel-storefront'
-import { hiddenProductIds } from '@/lib/juvenex/product-visibility'
-import { findLiveProduct, getPanelPriceIndex } from '@/lib/jx/panel-storefront.server'
+import { findLiveProduct, getPanelPriceIndex, getVisibleProductIds } from '@/lib/jx/panel-storefront.server'
 import { getStorefrontProduct } from '@/lib/jx/storefront-catalog'
 
 /**
@@ -25,8 +24,20 @@ async function resolveProduct(slug: string) {
   if (live === null) return undefined
   const fallback = getStorefrontProduct(slug)
   if (!fallback) return undefined
-  const priced = withPanelPrices(fallback, await getPanelPriceIndex())
-  return omitHiddenPlans(priced, hiddenProductIds()) ?? undefined
+  const [pricedIndex, visible] = await Promise.all([getPanelPriceIndex(), getVisibleProductIds()])
+  const priced = withPanelPrices(fallback, pricedIndex)
+  if (!visible) return priced
+  const hidden = new Set<string>()
+  for (const plan of priced.plans ?? []) {
+    if (!visible.has(plan.productId)) hidden.add(plan.productId)
+  }
+  for (const med of priced.medications ?? []) {
+    if (med.productId && !visible.has(med.productId)) hidden.add(med.productId)
+    for (const plan of med.plans ?? []) {
+      if (!visible.has(plan.productId)) hidden.add(plan.productId)
+    }
+  }
+  return omitHiddenPlans(priced, hidden) ?? undefined
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {

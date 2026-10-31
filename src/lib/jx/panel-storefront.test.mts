@@ -3,9 +3,12 @@ import { describe, test } from 'node:test'
 import {
   categoryKey,
   mapPanelCatalog,
+  activeProductIds,
+  inactiveProductIds,
   omitHiddenPlans,
   parseCategoryNames,
   parseProductPayload,
+  productIsActive,
   withPanelPrices,
 } from './panel-storefront'
 
@@ -119,6 +122,29 @@ describe('panel storefront mapping', () => {
     )
     assert.equal(priced.plans?.[0]?.price, 720)
     assert.equal(priced.startingPrice, 720)
+  })
+
+  test('reads product_status from Get_Products', () => {
+    assert.equal(productIsActive({ product_status: '1', product_status_text: 'Active' }), true)
+    assert.equal(productIsActive({ product_status: 0, product_status_text: 'Inactive' }), false)
+    assert.equal(productIsActive({ product_status: '1', product_status_text: 'Deactivated' }), false)
+    assert.equal(productIsActive({ product_id: '9' }), true)
+    assert.deepEqual(
+      inactiveProductIds([
+        { product_id: '46', product_status: '0', product_status_text: 'Inactive' },
+        { product_id: '47', product_status: '1', product_status_text: 'Active' },
+        { product_id: '48' },
+      ]),
+      ['46']
+    )
+    assert.deepEqual(
+      activeProductIds([
+        { product_id: '46', product_status: '0', product_status_text: 'Inactive' },
+        { product_id: '47', product_status: 1, product_status_text: 'Active' },
+        { product_id: '48' },
+      ]),
+      ['47', '48']
+    )
   })
 
   test('hides a plan an admin turned off', () => {

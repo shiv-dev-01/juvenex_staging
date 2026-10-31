@@ -1,11 +1,12 @@
+import { revalidateTag } from 'next/cache'
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 
-import { hiddenProductIds, rememberProductActive } from '@/lib/juvenex/product-visibility'
 import { canManagePricing } from '@/lib/juvenex/pricing-access'
 import { logger } from '@/lib/logger'
 import { rateLimit } from '@/lib/rate-limit'
-import { getPricedStorefront } from '@/lib/jx/panel-storefront.server'
+import { getPricedStorefront, getVisibleProductIds } from '@/lib/jx/panel-storefront.server'
+
 import { STOREFRONT_CATEGORIES, STOREFRONT_PRODUCTS } from '@/lib/jx/storefront-catalog'
 import { getAuthUser } from '@/lib/supabase/server'
 
@@ -14,6 +15,9 @@ const STATUS_URL = 'https://panel.whitelabelmd.com/juvenex/api/product-status-up
 const bodySchema = z.object({
   productId: z.string().trim().min(1).max(32),
 })
+
+/** Rows turned off on this server. Get_Products drops them, and the dashboard still needs a Show button. */
+const hiddenRows = new Map<string, CatalogRow>()
 
 type CatalogRow = {
   productId: string
@@ -91,9 +95,12 @@ export async function GET() {
     }
   }
 
-  const hidden = hiddenProductIds()
+  const visible = await getVisibleProductIds()
+  for (const row of hiddenRows.values()) {
+    if (!rows.has(row.productId)) rows.set(row.productId, row)
+  }
   const products = [...rows.values()]
-    .map((row) => ({ ...row, active: !hidden.has(row.productId) }))
+    .map((row) => ({ ...row, active: visible ? visible.has(row.productId) : !hiddenRows.has(row.productId) }))
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
 
   return Response.json({ success: true, data: { products } })
@@ -149,7 +156,30 @@ export async function POST(request: NextRequest) {
       : json.product_status != null
         ? Number(json.product_status) === 1
         : true
-    rememberProductActive(parsed.data.productId, active)
+    const catalog = await getPricedStorefront()
+    const labelByKey = new Map(catalog.categories.map((category) => [category.key, category.label]))
+    const remembered = [...catalog.products].flatMap((product) => {
+      const category = labelByKey.get(product.category) || product.category || 'Uncategorized'
+      const plans = [
+        ...(product.plans ?? []).map((plan) => ({ plan, name: product.name })),
+        ...(product.medications ?? []).flatMap((med) =>
+          (med.plans ?? []).map((plan) => ({ plan, name: med.name || product.name }))
+        ),
+      ]
+      return plans
+        .filter(({ plan }) => plan.productId === parsed.data.productId)
+        .map(({ plan, name }) => ({
+          productId: plan.productId,
+          name,
+          sku: plan.sku,
+          category,
+          planLabel: plan.label,
+        }))
+    })[0]
+    if (active) hiddenRows.delete(parsed.data.productId)
+    else if (remembered) hiddenRows.set(parsed.data.productId, remembered)
+    revalidateTag('jx-product-catalog', { expire: 0 })
+    revalidateTag('juvenex-catalog', { expire: 0 })
     return Response.json({
       success: true,
       data: {

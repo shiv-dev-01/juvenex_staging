@@ -21,7 +21,7 @@
 import type { NextRequest } from 'next/server'
 import { juvenexClient } from '@/lib/juvenex/client'
 import { panelPriceFor } from '@/lib/jx/panel-storefront'
-import { getPanelPriceIndex } from '@/lib/jx/panel-storefront.server'
+import { getPanelPriceIndex, getVisibleProductIds } from '@/lib/jx/panel-storefront.server'
 import { createIntentSchema } from '@/lib/juvenex/schemas'
 import { parseBody, requireUser, upstreamError } from '@/lib/juvenex/route-utils'
 import {
@@ -52,9 +52,19 @@ export async function POST(request: NextRequest) {
   try {
     // Authoritative prices, one lookup per line. Site 614 wins so an admin
     // update is what the customer is charged.
-    const panelPrices = await getPanelPriceIndex()
+    const [panelPrices, visible] = await Promise.all([getPanelPriceIndex(), getVisibleProductIds()])
     const priced: Array<{ productId: number; cents: number }> = []
     for (const line of lines) {
+      if (visible && !visible.has(String(line.product_id))) {
+        return Response.json(
+          {
+            error: 'product_unavailable',
+            message: `Product ${line.product_id} is no longer available.`,
+            product_id: line.product_id,
+          },
+          { status: 400 }
+        )
+      }
       const details = await juvenexClient.getProductDetails(String(line.product_id))
       const panelPrice = panelPriceFor(
         panelPrices,
